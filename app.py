@@ -15,15 +15,15 @@ COLORS = ["#4CAF50", "#2196F3", "#FF9800"]
 
 # ----------------- FUNCTIONS -----------------
 def get_fund_data(code):
-    """Fetch NAV data for last 2 years, only 3rd day NAVs, with % change."""
+    """Fetch NAV data for last 5 years, only 3rd day NAVs, with % change."""
     try:
         data = requests.get(f"https://api.mfapi.in/mf/{code}").json()['data']
         df = pd.DataFrame(data)
         df['date'] = pd.to_datetime(df['date'], format="%d-%m-%Y")
         df['nav'] = df['nav'].astype(float)
 
-        # Filter last 2 years
-        cutoff = datetime.today() - timedelta(days=730)
+        # Filter last 5 years
+        cutoff = datetime.today() - timedelta(days=5*365)
         df = df[df['date'] >= cutoff]
 
         # Only 3rd day NAVs
@@ -56,9 +56,9 @@ def get_current_and_alltime_nav(code):
     }
 
 def get_nifty_data():
-    """Fetch Nifty 50 monthly prices for last 2 years."""
+    """Fetch Nifty 50 monthly prices for last 5 years."""
     end = datetime.today()
-    start = end - timedelta(days=730)
+    start = end - timedelta(days=5*365)
     nifty = yf.download("^NSEI", start=start, end=end, interval="1mo")
     
     if nifty.empty:
@@ -96,37 +96,51 @@ def calculate_cagr(start_value, end_value, years):
 # ----------------- UI -----------------
 st.set_page_config(page_title="Mutual Fund NAV Tracker", layout="wide")
 st.title("📈 Mutual Fund NAV Tracker with Nifty 50 Comparison & Buy Alert")
-st.write("Track NAV on **3rd day of each month** (last 2 years), compare with Nifty 50, see CAGR, and potential buying opportunities.")
+st.write("Track NAV on **3rd day of each month** (last 5 years), compare with Nifty 50, see 2Y & 5Y CAGR, and potential buying opportunities.")
 
 # ----------------- Latest NAV + All-Time High + CAGR + Buy Alert -----------------
-st.subheader("🔹 Current & All-Time High NAVs + CAGR (2Y)")
+st.subheader("🔹 Current & All-Time High NAVs + CAGR (2Y & 5Y)")
 cols = st.columns(len(FUNDS))
 
-nifty_df_full = get_nifty_data()  # Fetch once for all funds
+nifty_df_full = get_nifty_data()  # Monthly data for last 5 years
 
 for i, (fund_name, code) in enumerate(FUNDS.items()):
     try:
         fund_df = get_fund_data(code)
         nav_info = get_current_and_alltime_nav(code)
 
-        # Calculate 2-year CAGR
-        if not fund_df.empty:
-            start_nav = fund_df['NAV'].iloc[-1]
-            end_nav = fund_df['NAV'].iloc[0]
-            years = 2
-            fund_cagr = calculate_cagr(start_nav, end_nav, years)
+        # Calculate 2Y and 5Y CAGR
+        def get_cagr_years(df, years):
+            cutoff = datetime.today() - timedelta(days=years*365)
+            df_filtered = df[df['Date'] >= cutoff]
+            if len(df_filtered) >= 2:
+                start_nav = df_filtered['NAV'].iloc[-1]
+                end_nav = df_filtered['NAV'].iloc[0]
+                return calculate_cagr(start_nav, end_nav, years)
+            return None
 
-            start_nifty = nifty_df_full['Nifty'].iloc[-1]
-            end_nifty = nifty_df_full['Nifty'].iloc[0]
-            nifty_cagr = calculate_cagr(start_nifty, end_nifty, years)
-        else:
-            fund_cagr = nifty_cagr = None
+        fund_cagr_2y = get_cagr_years(fund_df, 2)
+        fund_cagr_5y = get_cagr_years(fund_df, 5)
+
+        # Nifty CAGR
+        def get_nifty_cagr_years(nifty_df, years):
+            cutoff = datetime.today() - timedelta(days=years*365)
+            df_filtered = nifty_df[nifty_df['Date'] >= cutoff]
+            if len(df_filtered) >= 2:
+                start = df_filtered['Nifty'].iloc[-1]
+                end = df_filtered['Nifty'].iloc[0]
+                return calculate_cagr(start, end, years)
+            return None
+
+        nifty_cagr_2y = get_nifty_cagr_years(nifty_df_full, 2)
+        nifty_cagr_5y = get_nifty_cagr_years(nifty_df_full, 5)
 
         # ----------------- Buy Alert (20% below all-time high) -----------------
         alert_msg = None
         if nav_info['current_nav'] < 0.80 * nav_info['max_nav']:
             alert_msg = f"🚨 {fund_name} NAV is below 80% of its all-time high. Consider reviewing for potential buying opportunity!"
 
+        # ----------------- Display -----------------
         with cols[i]:
             st.markdown(
                 f"""
@@ -141,8 +155,10 @@ for i, (fund_name, code) in enumerate(FUNDS.items()):
                     <h4 style="margin:0;">{fund_name}</h4>
                     <p style="margin:0; font-size:14px;">Current NAV: <b>{nav_info['current_nav']:.2f}</b> ({nav_info['current_date']})</p>
                     <p style="margin:0; font-size:14px;">All-Time High: <b>{nav_info['max_nav']:.2f}</b> ({nav_info['max_date']})</p>
-                    <p style="margin:0; font-size:14px;">Fund CAGR (2Y): <b>{fund_cagr:.2f}%</b></p>
-                    <p style="margin:0; font-size:14px;">Nifty CAGR (2Y): <b>{nifty_cagr:.2f}%</b></p>
+                    <p style="margin:0; font-size:14px;">Fund CAGR (2Y): <b>{fund_cagr_2y:.2f}%</b></p>
+                    <p style="margin:0; font-size:14px;">Fund CAGR (5Y): <b>{fund_cagr_5y:.2f}%</b></p>
+                    <p style="margin:0; font-size:14px;">Nifty CAGR (2Y): <b>{nifty_cagr_2y:.2f}%</b></p>
+                    <p style="margin:0; font-size:14px;">Nifty CAGR (5Y): <b>{nifty_cagr_5y:.2f}%</b></p>
                 </div>
                 """,
                 unsafe_allow_html=True
