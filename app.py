@@ -4,9 +4,9 @@ import pandas as pd
 
 # Mutual Fund Scheme Codes (from AMFI via mfapi.in)
 FUNDS = {
-    "Parag Parikh Flexi Cap": "120800",
-    "Motilal Oswal Midcap 30": "118834",
-    "Quant Small Cap": "120588"
+    "Parag Parikh Flexi Cap": "122639"
+    "Motilal Oswal Midcap 30": "127042"
+    "Quant Small Cap": "120828"
 }
 
 def get_fund_data(code):
