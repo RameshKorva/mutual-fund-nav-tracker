@@ -79,8 +79,23 @@ st.write("Tracks NAV on the 3rd of each month and shows month-over-month % chang
 for fund_name, code in FUNDS.items():
     st.header(fund_name)
     df = fetch_nav(code)
+
+    if df.empty:
+        st.write("No data available for the selected fund.")
+        continue
+
     nav_list = get_monthly_nav(df)
     df_changes = calculate_changes(nav_list)
+
+    st.write("Data Preview:")
     st.dataframe(df_changes, hide_index=True, width=1000)
-    st.line_chart(df_changes.set_index(['Year', 'Month'])['NAV'])
-    st.bar_chart(df_changes.set_index(['Year', 'Month'])['% Change (MoM)'])
+
+    if all(col in df_changes.columns for col in ['Year', 'Month', 'NAV']):
+        st.line_chart(df_changes.set_index(['Year', 'Month'])['NAV'])
+    else:
+        st.write("Missing columns for line chart: 'Year', 'Month', or 'NAV'.")
+
+    if '% Change (MoM)' in df_changes.columns:
+        st.bar_chart(df_changes.set_index(['Year', 'Month'])['% Change (MoM)'])
+    else:
+        st.write("Column '% Change (MoM)' is missing for bar chart.")
