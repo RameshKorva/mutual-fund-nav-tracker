@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
 
 # Mutual Fund Scheme Codes (from AMFI via mfapi.in)
 FUNDS = {
@@ -82,22 +83,60 @@ st.subheader("🔎 Fund Analysis")
 fund_choice = st.selectbox("Choose a Mutual Fund", list(FUNDS.keys()))
 
 if fund_choice:
-    st.markdown(f"### {fund_choice}")
     df = get_fund_data(FUNDS[fund_choice])
 
     if not df.empty:
-        # Style NAV % change
-        def highlight(val):
-            if pd.isna(val):
+        # Reorder, rename, and sort columns (latest first)
+        df_display = (
+            df[['date', 'nav', 'pct_change']]
+            .rename(
+                columns={
+                    "date": "Date",
+                    "nav": "NAV",
+                    "pct_change": "Change (%)"
+                }
+            )
+            .sort_values("Date", ascending=False)
+        )
+
+        # Toggle between table and chart
+        view_mode = st.radio("Select View:", ["📋 Table", "📈 Chart"], horizontal=True)
+
+        if view_mode == "📋 Table":
+            # Style % change column
+            def highlight(val):
+                if pd.isna(val):
+                    return ""
+                if val > 5:
+                    return "color:red; font-weight:bold;"
+                elif val < -5:
+                    return "color:green; font-weight:bold;"
                 return ""
-            color = "red" if val > 5 else ("green" if val < -5 else "")
-            return f"color:{color}; font-weight:bold;" if color else ""
 
-        styled_df = df[['date', 'nav', 'pct_change']].style.format(
-            {"nav": "{:.2f}", "pct_change": "{:.2f}%"}
-        ).map(highlight, subset=['pct_change'])
+            styled_df = df_display.style.format(
+                {"NAV": "{:.2f}", "Change (%)": "{:.2f}%"}
+            ).map(highlight, subset=["Change (%)"])
 
-        st.dataframe(styled_df, width="stretch")
-        st.line_chart(df.set_index("date")[['nav', 'pct_change']])
+            st.dataframe(styled_df, width="stretch")
+
+        elif view_mode == "📈 Chart":
+            fig, ax1 = plt.subplots(figsize=(10, 5))
+
+            # NAV line
+            ax1.set_xlabel("Date")
+            ax1.set_ylabel("NAV", color="blue")
+            ax1.plot(df["date"], df["nav"], color="blue", marker="o", label="NAV")
+            ax1.tick_params(axis="y", labelcolor="blue")
+
+            # Second axis for % change
+            ax2 = ax1.twinx()
+            ax2.set_ylabel("Change (%)", color="red")
+            ax2.plot(df["date"], df["pct_change"], color="red", marker="x", linestyle="--", label="Change (%)")
+            ax2.tick_params(axis="y", labelcolor="red")
+
+            # Title and grid
+            fig.tight_layout()
+            st.pyplot(fig)
+
     else:
         st.warning("No data available for this fund.")
