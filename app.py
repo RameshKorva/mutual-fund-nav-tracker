@@ -39,29 +39,33 @@ def get_fund_data(code):
         st.error(f"Error fetching data: {e}")
         return pd.DataFrame()
 
-def get_current_nav(code):
-    """Fetch latest NAV for a given fund."""
-    url = f"https://api.mfapi.in/mf/{code}"
-    try:
-        data = requests.get(url).json()
-        latest = data['data'][0]
-        return float(latest['nav']), latest['date']
-    except:
-        return None, None
-
 # ----------------- UI -----------------
 st.set_page_config(page_title="Mutual Fund NAV Tracker", layout="wide")
 st.title("📈 Mutual Fund NAV Tracker")
 st.write("Track NAV on **3rd day of each month** (last 2 years) and % change compared to previous month.")
 
-# ----------------- Latest NAV Cards -----------------
-st.subheader("🔹 Current NAVs")
+# ----------------- Latest NAV + All-Time High -----------------
+st.subheader("🔹 Current & All-Time High NAVs")
 cols = st.columns(len(FUNDS))
 colors = ["#4CAF50", "#2196F3", "#FF9800"]  # green, blue, orange
 
 for i, (fund_name, code) in enumerate(FUNDS.items()):
-    nav, date = get_current_nav(code)
-    if nav:
+    try:
+        data = requests.get(f"https://api.mfapi.in/mf/{code}").json()['data']
+        df_all = pd.DataFrame(data)
+        df_all['nav'] = df_all['nav'].astype(float)
+        df_all['date'] = pd.to_datetime(df_all['date'], format="%d-%m-%Y")
+
+        # Current NAV
+        current = df_all.iloc[0]
+        current_nav = float(current['nav'])
+        current_date = current['date'].strftime("%Y-%m-%d")
+
+        # All-time high NAV
+        all_time_max = df_all.loc[df_all['nav'].idxmax()]
+        max_nav = float(all_time_max['nav'])
+        max_date = all_time_max['date'].strftime("%Y-%m-%d")
+
         with cols[i]:
             st.markdown(
                 f"""
@@ -74,12 +78,15 @@ for i, (fund_name, code) in enumerate(FUNDS.items()):
                     box-shadow: 0 4px 6px rgba(0,0,0,0.2);
                 ">
                     <h4 style="margin:0;">{fund_name}</h4>
-                    <h2 style="margin:8px 0;">{nav:.2f}</h2>
-                    <p style="margin:0; font-size:14px;">as of {date}</p>
+                    <p style="margin:0; font-size:14px;">Current NAV: <b>{current_nav:.2f}</b> ({current_date})</p>
+                    <p style="margin:0; font-size:14px;">All-Time High: <b>{max_nav:.2f}</b> ({max_date})</p>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
+    except:
+        with cols[i]:
+            st.error(f"{fund_name}: Data not available")
 
 # ----------------- Fund Analysis -----------------
 st.subheader("🔎 Fund Analysis")
