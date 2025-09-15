@@ -53,12 +53,12 @@ for choice in fund_choices:
         styled_df = df[['date', 'nav', 'pct_change']].style.format({
             "nav": "{:.2f}",
             "pct_change": "{:.2f}%"
-        }).applymap(
+        }).map(
             lambda v: "color: green; font-weight: bold;" if isinstance(v, float) and v > 5 else
                       "color: red; font-weight: bold;" if isinstance(v, float) and v < -5 else ""
         , subset=['pct_change'])
 
-        st.dataframe(styled_df, use_container_width=True)
+        st.dataframe(styled_df, width="stretch")
         st.line_chart(df.set_index("date")[['nav', 'pct_change']])
     else:
         st.warning("No data available for this fund.")
