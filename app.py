@@ -96,7 +96,7 @@ def calculate_cagr(start_value, end_value, years):
 # ----------------- UI -----------------
 st.set_page_config(page_title="Mutual Fund NAV Tracker", layout="wide")
 st.title("📈 Mutual Fund NAV Tracker with Nifty 50 Comparison & Buy Alert")
-st.write("Track NAV on **3rd day of each month** (last 5 years), compare with Nifty 50, see 2Y & 5Y CAGR, and potential buying opportunities.")
+st.write("Track NAV on **3rd day of each month** (last 2 years in table), compare with Nifty 50, see 2Y & 5Y CAGR, and potential buying opportunities.")
 
 # ----------------- Latest NAV + All-Time High + CAGR + Buy Alert -----------------
 st.subheader("🔹 Current & All-Time High NAVs + CAGR (2Y & 5Y)")
@@ -109,31 +109,20 @@ for i, (fund_name, code) in enumerate(FUNDS.items()):
         fund_df = get_fund_data(code)
         nav_info = get_current_and_alltime_nav(code)
 
-        # Calculate 2Y and 5Y CAGR
-        def get_cagr_years(df, years):
+        # Corrected CAGR calculations
+        def get_cagr_years(df, years, column):
             cutoff = datetime.today() - timedelta(days=years*365)
-            df_filtered = df[df['Date'] >= cutoff]
+            df_filtered = df[df['Date'] >= cutoff].sort_values('Date')
             if len(df_filtered) >= 2:
-                start_nav = df_filtered['NAV'].iloc[-1]
-                end_nav = df_filtered['NAV'].iloc[0]
-                return calculate_cagr(start_nav, end_nav, years)
+                start_value = df_filtered[column].iloc[0]   # oldest
+                end_value = df_filtered[column].iloc[-1]    # latest
+                return calculate_cagr(start_value, end_value, years)
             return None
 
-        fund_cagr_2y = get_cagr_years(fund_df, 2)
-        fund_cagr_5y = get_cagr_years(fund_df, 5)
-
-        # Nifty CAGR
-        def get_nifty_cagr_years(nifty_df, years):
-            cutoff = datetime.today() - timedelta(days=years*365)
-            df_filtered = nifty_df[nifty_df['Date'] >= cutoff]
-            if len(df_filtered) >= 2:
-                start = df_filtered['Nifty'].iloc[-1]
-                end = df_filtered['Nifty'].iloc[0]
-                return calculate_cagr(start, end, years)
-            return None
-
-        nifty_cagr_2y = get_nifty_cagr_years(nifty_df_full, 2)
-        nifty_cagr_5y = get_nifty_cagr_years(nifty_df_full, 5)
+        fund_cagr_2y = get_cagr_years(fund_df, 2, 'NAV')
+        fund_cagr_5y = get_cagr_years(fund_df, 5, 'NAV')
+        nifty_cagr_2y = get_cagr_years(nifty_df_full, 2, 'Nifty')
+        nifty_cagr_5y = get_cagr_years(nifty_df_full, 5, 'Nifty')
 
         # ----------------- Buy Alert (20% below all-time high) -----------------
         alert_msg = None
@@ -171,7 +160,7 @@ for i, (fund_name, code) in enumerate(FUNDS.items()):
             st.error(f"{fund_name}: Data not available")
 
 # ----------------- Fund Analysis -----------------
-st.subheader("🔎 Fund Analysis vs Nifty 50")
+st.subheader("🔎 Fund Analysis vs Nifty 50 (Last 2 Years)")
 fund_choice = st.selectbox("Choose a Mutual Fund", list(FUNDS.keys()))
 
 if fund_choice:
@@ -179,20 +168,24 @@ if fund_choice:
     if not fund_df.empty and not nifty_df_full.empty:
         df_merged = merge_fund_nifty(fund_df, nifty_df_full)
 
+        # Filter last 2 years for table
+        two_years_ago = datetime.today() - timedelta(days=2*365)
+        df_merged_table = df_merged[df_merged['Date'] >= two_years_ago].copy()
+
         # Highlight row red if fund underperforms Nifty by >3%
         def highlight_row(row):
             if row['Fund Change (%)'] < row['Nifty Change (%)'] - 3:
                 return ['background-color: #ffcccc'] * len(row)
             return [''] * len(row)
 
-        styled_df = df_merged.style.apply(highlight_row, axis=1).format(
+        styled_df = df_merged_table.style.apply(highlight_row, axis=1).format(
             {"NAV": "{:.2f}", "Fund Change (%)": "{:.2f}%", "Nifty Change (%)": "{:.2f}%"}
         )
 
         st.dataframe(styled_df, width='stretch')
 
-        # ----------------- Line Chart -----------------
-        st.subheader(f"📊 Performance Comparison: {fund_choice} vs Nifty 50")
+        # ----------------- Line Chart (Full 5Y) -----------------
+        st.subheader(f"📊 Performance Comparison: {fund_choice} vs Nifty 50 (Normalized)")
         chart_df = df_merged[['Date', 'NAV']].copy()
         chart_df.set_index('Date', inplace=True)
         chart_df['Fund'] = (chart_df['NAV'] / chart_df['NAV'].iloc[-1]) * 100
