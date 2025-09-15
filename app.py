@@ -11,7 +11,7 @@ FUNDS = {
 }
 
 def get_fund_data(code):
-    """Fetch NAV data, keep last 2 years, and filter only 3rd day NAVs with % change."""
+    """Fetch NAV data, keep last 2 years, only 3rd day NAVs with % change."""
     url = f"https://api.mfapi.in/mf/{code}"
     try:
         data = requests.get(url).json()
@@ -19,25 +19,21 @@ def get_fund_data(code):
         navs['date'] = pd.to_datetime(navs['date'], format="%d-%m-%Y")
         navs['nav'] = navs['nav'].astype(float)
 
-        # Keep only last 2 years
+        # Filter last 2 years
         two_years_ago = datetime.today() - timedelta(days=730)
         navs = navs[navs['date'] >= two_years_ago]
 
-        # Pick only 3rd day NAVs
-        navs = navs[navs['date'].dt.day == 3].sort_values("date")
+        # Only 3rd day NAVs
+        navs = navs[navs['date'].dt.day == 3].sort_values("date", ascending=False)
 
         # Calculate % change month-on-month
         navs['Change (%)'] = navs['nav'].pct_change() * 100
 
-        # Keep only required columns
+        # Keep only 3 columns
         navs = navs[['date', 'nav', 'Change (%)']]
 
         # Rename columns
-        navs.rename(columns={
-            "date": "Date",
-            "nav": "NAV"
-        }, inplace=True)
-
+        navs.rename(columns={"date": "Date", "nav": "NAV"}, inplace=True)
         return navs
     except Exception as e:
         st.error(f"Error fetching data: {e}")
@@ -55,39 +51,54 @@ def get_current_nav(code):
 
 # ----------------- UI -----------------
 st.set_page_config(page_title="Mutual Fund NAV Tracker", layout="wide")
-
 st.title("📈 Mutual Fund NAV Tracker")
 st.write("Track NAV on **3rd day of each month** (last 2 years) and % change compared to previous month.")
 
-# Show current NAVs at the top
+# ----------------- Latest NAV Cards -----------------
 st.subheader("🔹 Current NAVs")
 cols = st.columns(len(FUNDS))
+colors = ["#4CAF50", "#2196F3", "#FF9800"]  # green, blue, orange
+
 for i, (fund_name, code) in enumerate(FUNDS.items()):
     nav, date = get_current_nav(code)
     if nav:
-        cols[i].metric(label=f"{fund_name} ({date})", value=f"{nav:.2f}")
-    else:
-        cols[i].error("No data")
+        with cols[i]:
+            st.markdown(
+                f"""
+                <div style="
+                    background-color:{colors[i % len(colors)]};
+                    padding:18px;
+                    border-radius:10px;
+                    text-align:center;
+                    color:white;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+                ">
+                    <h4 style="margin:0;">{fund_name}</h4>
+                    <h2 style="margin:8px 0;">{nav:.2f}</h2>
+                    <p style="margin:0; font-size:14px;">as of {date}</p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
-# Fund selection
+# ----------------- Fund Analysis -----------------
+st.subheader("🔎 Fund Analysis")
 fund_choice = st.selectbox("Choose a Mutual Fund", list(FUNDS.keys()))
 
 if fund_choice:
-    st.subheader(f"📊 {fund_choice} - Last 2 Years (3rd Day NAVs)")
     df = get_fund_data(FUNDS[fund_choice])
 
     if not df.empty:
-        # Highlight % change above 5% in green and below -5% in red
-        def highlight_changes(val):
-            if pd.isna(val):
-                return ''
-            if val > 5:
-                return 'color: green; font-weight: bold;'
-            elif val < -5:
-                return 'color: red; font-weight: bold;'
-            return ''
+        # Style entire row red if Change (%) < -3%
+        def highlight_row(row):
+            if row['Change (%)'] < -3:
+                return ['background-color: #ffcccc'] * len(row)
+            return [''] * len(row)
 
-        styled_df = df.style.map(highlight_changes, subset=["Change (%)"])
+        styled_df = df.style.apply(highlight_row, axis=1).format(
+            {"NAV": "{:.2f}", "Change (%)": "{:.2f}%"}
+        )
+
         st.dataframe(styled_df, width='stretch')
     else:
         st.warning("No data available for this fund.")
