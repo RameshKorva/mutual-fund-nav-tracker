@@ -59,11 +59,25 @@ def get_nifty_data():
     """Fetch Nifty 50 monthly prices for last 2 years."""
     end = datetime.today()
     start = end - timedelta(days=730)
-    nifty = yf.download("^NSEI", start=start, end=end, interval="1mo")['Close'].reset_index()
-    nifty.rename(columns={"Date": "Date", "Close": "Nifty"}, inplace=True)
-    nifty['Date'] = pd.to_datetime(nifty['Date'])
-    nifty['Nifty Change (%)'] = nifty['Nifty'].pct_change() * 100
-    return nifty
+    nifty = yf.download("^NSEI", start=start, end=end, interval="1mo")
+    
+    if nifty.empty:
+        st.error("Error fetching Nifty 50 data from yfinance")
+        return pd.DataFrame()
+    
+    # Use 'Close' or fallback to 'Adj Close'
+    if 'Close' in nifty.columns:
+        nifty_prices = nifty['Close'].reset_index()
+    elif 'Adj Close' in nifty.columns:
+        nifty_prices = nifty['Adj Close'].reset_index()
+    else:
+        st.error("No valid price column found for Nifty")
+        return pd.DataFrame()
+    
+    nifty_prices.rename(columns={"Date": "Date", nifty_prices.columns[1]: "Nifty"}, inplace=True)
+    nifty_prices['Date'] = pd.to_datetime(nifty_prices['Date'])
+    nifty_prices['Nifty Change (%)'] = nifty_prices['Nifty'].pct_change() * 100
+    return nifty_prices
 
 def merge_fund_nifty(fund_df, nifty_df):
     """Merge fund NAV data with closest Nifty date for comparison."""
@@ -146,7 +160,7 @@ fund_choice = st.selectbox("Choose a Mutual Fund", list(FUNDS.keys()))
 
 if fund_choice:
     fund_df = get_fund_data(FUNDS[fund_choice])
-    if not fund_df.empty:
+    if not fund_df.empty and not nifty_df_full.empty:
         df_merged = merge_fund_nifty(fund_df, nifty_df_full)
 
         # Highlight row red if fund underperforms Nifty by >3%
@@ -177,4 +191,4 @@ if fund_choice:
 
         st.line_chart(chart_df[['Fund', 'Nifty']])
     else:
-        st.warning("No data available for this fund.")
+        st.warning("No data available for this fund or Nifty.")
